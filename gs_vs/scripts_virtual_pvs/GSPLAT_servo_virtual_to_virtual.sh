@@ -10,7 +10,7 @@ NUM_ITERATIONS=29999 # 29999 or 6999
 
 :<<"COMMENT"
 
-COMMENT
+
 
 python -m gs_vs.experiments.servo_virtual_to_virtual_gsplat --ckpt ${GS_MODEL}/ckpts/ckpt_${NUM_ITERATIONS}_rank0.pt \
     --cfg  ${GS_MODEL}/cfg.yml \
@@ -18,6 +18,7 @@ python -m gs_vs.experiments.servo_virtual_to_virtual_gsplat --ckpt ${GS_MODEL}/c
     --intrinsics_file config/intrinsics_fisheye_1024x1024.yml \
     --desired_image_index 100 \
     --feature_type unified_ps
+COMMENT
 
 python -m gs_vs.experiments.servo_virtual_to_virtual_gsplat --ckpt ${GS_MODEL}/ckpts/ckpt_${NUM_ITERATIONS}_rank0.pt \
     --cfg  ${GS_MODEL}/cfg.yml \
