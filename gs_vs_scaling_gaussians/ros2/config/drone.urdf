@@ -1,0 +1,165 @@
+<?xml version="1.0"?>
+<robot name="quadrotor" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Base link (drone body) -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="0.06 0.06 0.02"/>
+      </geometry>
+      <material name="dark_gray">
+        <color rgba="0.2 0.2 0.2 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- Front-left arm + rotor -->
+  <link name="arm_fl">
+    <visual>
+      <origin xyz="0.025 0.025 0" rpy="0 0 0.785"/>
+      <geometry>
+        <box size="0.07 0.008 0.005"/>
+      </geometry>
+      <material name="gray">
+        <color rgba="0.3 0.3 0.3 1.0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="arm_fl_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_fl"/>
+  </joint>
+
+  <link name="rotor_fl">
+    <visual>
+      <origin xyz="0.05 0.05 0.005"/>
+      <geometry>
+        <cylinder radius="0.025" length="0.003"/>
+      </geometry>
+      <material name="red">
+        <color rgba="0.8 0.2 0.2 0.7"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="rotor_fl_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="rotor_fl"/>
+  </joint>
+
+  <!-- Front-right arm + rotor -->
+  <link name="arm_fr">
+    <visual>
+      <origin xyz="0.025 -0.025 0" rpy="0 0 -0.785"/>
+      <geometry>
+        <box size="0.07 0.008 0.005"/>
+      </geometry>
+      <material name="gray">
+        <color rgba="0.3 0.3 0.3 1.0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="arm_fr_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_fr"/>
+  </joint>
+
+  <link name="rotor_fr">
+    <visual>
+      <origin xyz="0.05 -0.05 0.005"/>
+      <geometry>
+        <cylinder radius="0.025" length="0.003"/>
+      </geometry>
+      <material name="red">
+        <color rgba="0.8 0.2 0.2 0.7"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="rotor_fr_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="rotor_fr"/>
+  </joint>
+
+  <!-- Back-left arm + rotor -->
+  <link name="arm_bl">
+    <visual>
+      <origin xyz="-0.025 0.025 0" rpy="0 0 -0.785"/>
+      <geometry>
+        <box size="0.07 0.008 0.005"/>
+      </geometry>
+      <material name="gray">
+        <color rgba="0.3 0.3 0.3 1.0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="arm_bl_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_bl"/>
+  </joint>
+
+  <link name="rotor_bl">
+    <visual>
+      <origin xyz="-0.05 0.05 0.005"/>
+      <geometry>
+        <cylinder radius="0.025" length="0.003"/>
+      </geometry>
+      <material name="dark">
+        <color rgba="0.15 0.15 0.15 0.7"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="rotor_bl_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="rotor_bl"/>
+  </joint>
+
+  <!-- Back-right arm + rotor -->
+  <link name="arm_br">
+    <visual>
+      <origin xyz="-0.025 -0.025 0" rpy="0 0 0.785"/>
+      <geometry>
+        <box size="0.07 0.008 0.005"/>
+      </geometry>
+      <material name="gray">
+        <color rgba="0.3 0.3 0.3 1.0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="arm_br_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_br"/>
+  </joint>
+
+  <link name="rotor_br">
+    <visual>
+      <origin xyz="-0.05 -0.05 0.005"/>
+      <geometry>
+        <cylinder radius="0.025" length="0.003"/>
+      </geometry>
+      <material name="dark">
+        <color rgba="0.15 0.15 0.15 0.7"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="rotor_br_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="rotor_br"/>
+  </joint>
+
+  <!-- Camera mount (front) -->
+  <link name="camera_link">
+    <visual>
+      <origin xyz="0.035 0 -0.008"/>
+      <geometry>
+        <box size="0.02 0.012 0.012"/>
+      </geometry>
+      <material name="blue">
+        <color rgba="0.2 0.4 0.8 1.0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera_link"/>
+  </joint>
+
+</robot>

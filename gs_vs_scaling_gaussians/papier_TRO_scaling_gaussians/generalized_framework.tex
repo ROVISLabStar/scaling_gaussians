@@ -1,0 +1,344 @@
+\documentclass[11pt]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\title{A Generalized Framework for Direct Visual Servoing\\with Gaussian-based Scene Representations}
+\author{Youssef Alj \and Guillaume Caron}
+\date{Working Draft --- April 2026}
+
+\begin{document}
+\maketitle
+
+\section{Generalized Framework}
+
+\subsection{Photometric Visual Servoing: Unified Formulation}
+
+The visual servoing task minimizes the Sum of Squared Differences (SSD) between visual features extracted from the current and desired images:
+\begin{equation}
+    \mathcal{C}(\mathbf{p}) = \frac{1}{2} \| \mathbf{s}(\mathbf{p}) - \mathbf{s}^* \|^2
+\end{equation}
+where $\mathbf{p} \in \mathbb{R}^n$ is the camera pose ($n=6$ for eye-in-hand), $\mathbf{s}$ is the visual feature vector, and $\mathbf{s}^*$ is the desired feature.
+
+The control law is based on the Gauss-Newton (or Levenberg-Marquardt) optimization:
+\begin{equation}
+    \mathbf{v} = -\lambda \left( \mu \, \text{diag}(\mathbf{H}) + \mathbf{H} \right)^{-1} \mathbf{L}_s^\top (\mathbf{s} - \mathbf{s}^*)
+\end{equation}
+where $\mathbf{L}_s$ is the interaction matrix, $\mathbf{H} = \mathbf{L}_s^\top \mathbf{L}_s$ is the approximate Hessian, $\lambda$ is the gain, and $\mu$ is the LM damping factor.
+
+\subsection{The Convergence Domain Problem}
+
+PVS achieves sub-millimeter precision at convergence but suffers from a narrow convergence domain due to the highly nonlinear cost function. Prior work has shown that \emph{smoothing} the visual features enlarges the convergence basin at the expense of precision:
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lccl}
+\toprule
+\textbf{Method} & \textbf{Smoothing Domain} & \textbf{Feature} & \textbf{Key Parameter} \\
+\midrule
+PVS~\cite{collewet2011} & None & $\mathbf{I}(\mathbf{u})$ & --- \\
+PGM-VS~\cite{crombez2019tro} & 2D image space & $G(\mathbf{I}, \lambda_g)$ & $\lambda_g$ (Gaussian spread) \\
+DDVS~\cite{caron2021ral} & Optical (thin lens) & $I_d(\mathbf{u})$ & $D, Z_f$ (aperture, focus) \\
+\textbf{Ours (3DGS-VS)} & \textbf{3D scene space} & $\mathbf{I}_\alpha(\mathbf{u})$ & $\alpha$ (scale factor) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Unifying Through Gaussian Spread}
+
+All three smoothing-based methods can be understood through a common lens: they control the \emph{effective Gaussian spread} $\sigma_{\text{eff}}$ in the image plane, which determines the convergence domain radius.
+
+\subsubsection{PGM-VS: 2D Isotropic Gaussian Convolution}
+
+PGM-VS~\cite{crombez2019tro} replaces pixel intensities with Photometric Gaussian Mixtures:
+\begin{equation}
+    G(\mathbf{I}, \mathbf{u}_g, \lambda_g) = \sum_{\mathbf{u}} I(\mathbf{u}) \exp\left( -\frac{\|\mathbf{u}_g - \mathbf{u}\|^2}{2\lambda_g^2} \right)
+\end{equation}
+The spread $\sigma_{\text{eff}} = \lambda_g$ is uniform across the image (isotropic, depth-independent). The interaction matrix $\mathbf{L}_G$ is derived analytically from the Gaussian derivatives $K_u$, $K_v$.
+
+\textbf{Properties:}
+\begin{itemize}
+    \item Large $\lambda_g$ $\Rightarrow$ wide convergence domain, low precision
+    \item Small $\lambda_g$ $\Rightarrow$ narrow domain, high precision
+    \item Multi-level strategy: $\lambda_g^{(1)} > \lambda_g^{(2)} > \ldots > \lambda_g^{(L)}$
+    \item Complexity: $O(NM)$ with separable convolution (TRO 2019 model)
+\end{itemize}
+
+\subsubsection{DDVS: Optical Defocus Blur}
+
+DDVS~\cite{caron2021ral} exploits the thin lens camera model. A 3D point $\mathbf{X}$ at depth $Z$ projects to a Circle of Confusion (CoC) with diameter:
+\begin{equation}
+    d(Z) = \frac{Df}{Z_f - f} \left( 1 - \frac{Z_f}{Z} \right)
+\end{equation}
+The effective Gaussian spread is $\sigma_{\text{eff}}(Z) = d(Z) / (6 k_u)$, which is \emph{depth-dependent} and controlled by the aperture $D$ and focus depth $Z_f$.
+
+\textbf{Properties:}
+\begin{itemize}
+    \item Blur is anisotropic and depth-dependent
+    \item Directly acquired (no image processing needed)
+    \item Complexity: $O(NM)$ (same as PVS)
+    \item Requires physical control of camera aperture/focus
+\end{itemize}
+
+\subsubsection{3DGS-VS (Ours): 3D Gaussian Scale Inflation}
+
+In 3D Gaussian Splatting, the scene is represented as a mixture of 3D Gaussians:
+\begin{equation}
+    \mathbf{I}(\mathbf{u}) = \sum_{k=1}^{K} c_k \, \alpha_k \prod_{j<k}(1-\alpha_j) \, \mathcal{N}(\mathbf{u}; \boldsymbol{\mu}_k^{2D}, \boldsymbol{\Sigma}_k^{2D})
+\end{equation}
+where $\boldsymbol{\mu}_k^{2D}$ and $\boldsymbol{\Sigma}_k^{2D}$ are the projected 2D mean and covariance of the $k$-th Gaussian.
+
+We scale the 3D Gaussian covariances by a factor $\alpha$:
+\begin{equation}
+    \boldsymbol{\Sigma}_k^{3D}(\alpha) = \alpha^2 \boldsymbol{\Sigma}_k^{3D}
+\end{equation}
+The projected 2D covariance becomes:
+\begin{equation}
+    \boldsymbol{\Sigma}_k^{2D}(\alpha) = \mathbf{J}_k \, \alpha^2 \boldsymbol{\Sigma}_k^{3D} \, \mathbf{J}_k^\top
+\end{equation}
+where $\mathbf{J}_k$ is the Jacobian of the projection at the $k$-th Gaussian's mean.
+
+The effective spread in the image plane is:
+\begin{equation}
+    \sigma_{\text{eff},k}(\alpha) = \alpha \cdot \sigma_k^{2D}
+\end{equation}
+which is \emph{per-Gaussian, depth-dependent, and anisotropic} --- inheriting the 3D structure of the scene.
+
+\textbf{Properties:}
+\begin{itemize}
+    \item Blur is native to the 3D scene representation (not a post-processing step)
+    \item Depth-dependent and anisotropic by construction
+    \item Each Gaussian's contribution is scaled independently based on its 3D geometry
+    \item Complexity: $O(NM)$ (just re-rendering with modified scales, same pipeline)
+    \item No physical camera modification needed (virtual rendering)
+    \item Compatible with any camera model supported by gsplat (pinhole, fisheye, etc.)
+\end{itemize}
+
+\subsubsection{Impact of $\alpha$ in the 3DGS Rendering Equation}
+
+We now trace the effect of $\alpha$ through the complete 3DGS rendering pipeline to show its mathematical impact on the rendered image and, consequently, on the cost function.
+
+\paragraph{3D Gaussian representation.}
+Each Gaussian $k$ is parameterized by its mean $\boldsymbol{\mu}_k \in \mathbb{R}^3$, rotation $\mathbf{R}_k \in SO(3)$, scales $\mathbf{s}_k = (s_x, s_y, s_z)_k$, opacity $o_k$, and spherical harmonics coefficients $\mathbf{c}_k$. The 3D covariance matrix is:
+\begin{equation}
+    \boldsymbol{\Sigma}_k = \mathbf{R}_k \, \mathbf{S}_k \mathbf{S}_k^\top \, \mathbf{R}_k^\top, \quad \mathbf{S}_k = \text{diag}(s_x, s_y, s_z)_k
+\end{equation}
+Inflating by $\alpha$: $\mathbf{S}'_k = \alpha \, \mathbf{S}_k$, yielding:
+\begin{equation}
+    \boldsymbol{\Sigma}'_k = \alpha^2 \, \boldsymbol{\Sigma}_k
+    \label{eq:cov3d_inflated}
+\end{equation}
+
+\paragraph{Splatting (3D to 2D projection).}
+The EWA (Elliptical Weighted Average) splatting projects each 3D Gaussian onto the image plane. Given a camera with view matrix $\mathbf{W}$ and the Jacobian $\mathbf{J}_k$ of the local affine approximation of the projection at $\boldsymbol{\mu}_k$:
+\begin{equation}
+    \boldsymbol{\Sigma}_{k}^{2D} = \mathbf{J}_k \, \mathbf{W} \, \boldsymbol{\Sigma}_k \, \mathbf{W}^\top \mathbf{J}_k^\top
+\end{equation}
+With the inflated covariance~\eqref{eq:cov3d_inflated}:
+\begin{equation}
+    \boldsymbol{\Sigma}_{k}^{\prime 2D} = \alpha^2 \, \boldsymbol{\Sigma}_{k}^{2D}
+    \label{eq:cov2d_inflated}
+\end{equation}
+Note that $\mathbf{J}_k$ and $\mathbf{W}$ are \emph{unchanged} --- the inflation affects only the covariance, not the Gaussian centers or the camera pose.
+
+\paragraph{Per-pixel alpha evaluation.}
+The contribution of Gaussian $k$ at pixel $\mathbf{p}$ is evaluated via the 2D Gaussian:
+\begin{equation}
+    \alpha_k(\mathbf{p}) = o_k \cdot \exp\!\left( -\frac{1}{2} \, \mathbf{d}_k^\top \left(\boldsymbol{\Sigma}_{k}^{2D}\right)^{-1} \mathbf{d}_k \right)
+\end{equation}
+where $\mathbf{d}_k = \mathbf{p} - \boldsymbol{\mu}_k^{2D}$ is the offset from the projected mean. Substituting the inflated covariance~\eqref{eq:cov2d_inflated}:
+\begin{equation}
+    \alpha'_k(\mathbf{p}) = o_k \cdot \exp\!\left( -\frac{1}{2\alpha^2} \, \mathbf{d}_k^\top \left(\boldsymbol{\Sigma}_{k}^{2D}\right)^{-1} \mathbf{d}_k \right)
+    \label{eq:alpha_inflated}
+\end{equation}
+\textbf{The exponent is divided by $\alpha^2$.} This has two direct consequences:
+\begin{enumerate}
+    \item The Gaussian's footprint in the image plane grows by factor $\alpha$ (each pixel sees contributions from Gaussians that are $\alpha$ times farther away).
+    \item For a pixel at distance $\mathbf{d}_k$ from the Gaussian center, $\alpha'_k > \alpha_k$, meaning distant Gaussians contribute \emph{more} to each pixel --- a smoothing effect.
+\end{enumerate}
+
+\paragraph{Alpha compositing (final pixel color).}
+The rendered color at pixel $\mathbf{p}$ follows front-to-back alpha compositing:
+\begin{equation}
+    C(\mathbf{p}) = \sum_{k=1}^{K} c_k \, \alpha'_k(\mathbf{p}) \prod_{j < k} \left(1 - \alpha'_j(\mathbf{p})\right)
+    \label{eq:compositing}
+\end{equation}
+Since $\alpha'_k(\mathbf{p})$ is affected by $\alpha$ via~\eqref{eq:alpha_inflated}, both the direct contribution and the occlusion term $\prod(1-\alpha'_j)$ are modified. Specifically:
+\begin{itemize}
+    \item Foreground Gaussians become more transparent (their $\alpha'_k$ decreases at their center when $\alpha > 1$ because the same mass is spread over a wider area).
+    \item Background Gaussians become more visible through the foreground.
+    \item The overall image is a \emph{weighted average} of more Gaussians per pixel, producing a blurred appearance.
+\end{itemize}
+
+\paragraph{Effect on image gradients.}
+Let $\nabla_{\mathbf{u}} C$ denote the spatial gradient of the rendered image. Since the compositing~\eqref{eq:compositing} involves smoother per-Gaussian evaluations (wider support), the resulting image gradient magnitude decreases:
+\begin{equation}
+    \| \nabla_{\mathbf{u}} C_\alpha \| \lesssim \frac{1}{\alpha} \| \nabla_{\mathbf{u}} C_1 \|
+\end{equation}
+This is analogous to the classical result in scale-space theory: convolving with a Gaussian of width $\sigma$ reduces gradient magnitude by $O(1/\sigma)$.
+
+\paragraph{Effect on the photometric cost function.}
+The photometric cost at a perturbed pose $\Delta\mathbf{p}$ from the desired pose is:
+\begin{equation}
+    \mathcal{C}_\alpha(\Delta\mathbf{p}) = \frac{1}{2} \sum_{\mathbf{u}} \left( C_\alpha(\mathbf{u}; \Delta\mathbf{p}) - C_\alpha^*(\mathbf{u}) \right)^2
+\end{equation}
+Since $C_\alpha$ is smoother, $\mathcal{C}_\alpha$ inherits the smoothness:
+\begin{itemize}
+    \item Local minima are suppressed (small-scale cost variations are averaged out).
+    \item The main basin around $\Delta\mathbf{p} = 0$ widens.
+    \item The gradient $\nabla_{\Delta\mathbf{p}} \mathcal{C}_\alpha$ is weaker but more directionally consistent over a larger region.
+\end{itemize}
+This explains the experimental observation of an \textbf{optimal $\alpha$}: too small, and local minima persist; too large, and the gradient vanishes entirely, preventing convergence.
+
+\paragraph{Comparison with PGM-VS.}
+In PGM-VS, the smoothing is applied \emph{after} rendering via a 2D Gaussian convolution:
+\begin{equation}
+    G(\mathbf{I}, \mathbf{u}_g, \lambda_g) = \sum_{\mathbf{u}} I(\mathbf{u}) \exp\!\left(-\frac{\|\mathbf{u}_g - \mathbf{u}\|^2}{2\lambda_g^2}\right)
+\end{equation}
+This is equivalent to convolving the rendered image with an isotropic Gaussian kernel of width $\lambda_g$. The crucial difference with our approach:
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lcc}
+\toprule
+ & \textbf{PGM-VS} & \textbf{3DGS-VS (ours)} \\
+\midrule
+Smoothing stage & After rendering (2D) & Before rendering (3D) \\
+Depth-dependence & No ($\lambda_g$ uniform) & Yes ($\sigma_k^{2D} \propto 1/Z_k$) \\
+Anisotropy & No (isotropic in 2D) & Yes (inherits 3D shape) \\
+Occlusion handling & Ignores (post-rendering blur) & Respects (compositing order) \\
+Interaction matrix & Requires $K_u, K_v$ convolutions & Standard PVS $\mathbf{L}_I$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Our method's key advantage is that the smoothing \emph{respects the 3D scene geometry}: a foreground object and a background wall are blurred independently according to their depth and 3D shape, rather than being smeared together by a uniform 2D convolution. This produces a more physically meaningful smoothed image and avoids spurious cost function minima caused by blending unrelated scene regions.
+
+\subsection{Connection to Convergence Domain Theory}
+
+Naamani et al.~\cite{naamani2024iros} proved that for DVS with Gaussian blur, the convergence domain radius $r$ satisfies:
+\begin{equation}
+    r \propto \sigma_{\text{eff}}
+\end{equation}
+for planar translation (Eq.~18 in~\cite{naamani2024iros}). Our experimental results (Section~\ref{sec:results}) confirm this relationship for 3DGS-VS:
+\begin{itemize}
+    \item $\alpha = 1.0$ (original): baseline convergence domain
+    \item $\alpha = 1.5$: convergence domain approximately doubles for $t_x$
+    \item $\alpha = 2.0$: rotation domains increase by $2\times$--$3\times$
+    \item $\alpha = 3.0$: gradients vanish, convergence collapses
+\end{itemize}
+
+The non-monotonic behavior (convergence improves then collapses) distinguishes 3DGS-VS from the 2D theoretical prediction, which assumes monotonic improvement. This is because 3D scaling introduces depth-dependent effects not captured by the 2D model: different parts of the scene blur at different rates depending on their depth, potentially creating new local minima at extreme scale factors.
+
+\subsection{Scale Adaptation Strategies}
+
+Given that large $\alpha$ helps approach but hurts precision, we consider three adaptation strategies:
+
+\subsubsection{Constant Inflation}
+
+Use a fixed $\alpha > 1$ throughout servoing:
+\begin{equation}
+    \alpha(t) = \alpha_0, \quad \forall t
+\end{equation}
+\textbf{Advantage:} Simple, wide basin. \textbf{Disadvantage:} Reduced precision at convergence.
+
+\subsubsection{Coarse-to-Fine}
+
+Decay $\alpha$ over $L$ phases:
+\begin{equation}
+    \alpha^{(\ell)} = \alpha_0^{1 - \ell/(L-1)}, \quad \ell = 0, 1, \ldots, L-1
+\end{equation}
+\textbf{Advantage:} Wide basin for approach, full precision for final convergence. \textbf{Disadvantage:} Phase transitions can cause instability; schedule is fixed regardless of convergence state.
+
+\subsubsection{Error-Adaptive}
+
+Scale proportional to normalized error:
+\begin{equation}
+    \alpha(t) = 1 + (\alpha_0 - 1) \cdot \min\left(\frac{e(t)}{e(0)}, 1\right)
+\end{equation}
+\textbf{Advantage:} Automatic, no schedule to tune. \textbf{Disadvantage:} Non-monotonic error can keep $\alpha$ high; sensitive to initial error calibration.
+
+\subsection{Comparison Summary}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lccccc}
+\toprule
+& \textbf{PGM-VS} & \textbf{DDVS} & \textbf{3DGS-VS} & \textbf{3DGS C2F} \\
+\midrule
+Smoothing domain & 2D image & Optical & 3D scene & 3D scene \\
+Depth-dependent & No & Yes & Yes & Yes \\
+Anisotropic & No & Yes & Yes & Yes \\
+Requires 3D model & No & No & Yes (GS) & Yes (GS) \\
+Requires real camera & Yes & Yes & No & No \\
+Complexity & $O(NM)$ & $O(NM)$ & $O(NM)$ & $O(NM)$ \\
+Convergence speed & Fast & --- & Moderate & Moderate \\
+Convergence basin & Moderate & Moderate & Wide & Wide \\
+Final precision & High & High & Low & High \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Experimental Validation}
+\label{sec:results}
+
+Our experiments confirm the theoretical framework on four mip-NeRF 360 scenes (room, kitchen, garden, bicycle):
+
+\begin{enumerate}
+    \item \textbf{Cost function landscape:} Scaling Gaussians smooths the cost function and widens the basin (Fig.~2 of experimental notes). $\alpha = 1.5$--$2.0$ is optimal; $\alpha = 3.0$ flattens gradients.
+
+    \item \textbf{Convergence domain:} Bisection measurements show $\alpha = 1.5$ doubles translation domain, $\alpha = 2.0$ triples rotation domain. Relationship is non-monotonic (unlike 2D theory).
+
+    \item \textbf{Multi-scene evaluation:} Inflated 3DGS consistently outperforms original PVS across scenes (+20--40\% success rate on medium perturbations). Same $\alpha = 1.8$ works across scenes.
+
+    \item \textbf{PGM-VS comparison:} PGM is 2--8$\times$ faster when it converges but has narrower basin. Inflated 3DGS succeeds on pairs where PGM fails.
+
+    \item \textbf{Qualitative results:} 35 pairs tested (indices 0--150). Inflated converges on 22/35, PGM on 15/35, original on 19/35. The methods are complementary.
+\end{enumerate}
+
+\section{Toward a Unified Blur-Adaptive Visual Servoing}
+
+The framework suggests a natural hierarchy for practical systems:
+
+\begin{enumerate}
+    \item \textbf{Far from goal} ($\|\mathbf{e}\| \gg 0$): Use inflated 3DGS ($\alpha \approx 2.0$) for maximum convergence basin. The camera navigates coarsely toward the goal.
+
+    \item \textbf{Approaching goal} ($\|\mathbf{e}\|$ moderate): Reduce $\alpha$ progressively (coarse-to-fine) or switch to PGM-VS (which has a smaller basin but faster convergence).
+
+    \item \textbf{Near goal} ($\|\mathbf{e}\| \approx 0$): Use original PVS ($\alpha = 1.0$) or PGM-VS with small $\lambda_g$ for maximum precision.
+\end{enumerate}
+
+This hybrid strategy leverages each method's strength: 3DGS scaling for wide-range navigation, PGM for fast approach, and original PVS for final positioning.
+
+
+\begin{thebibliography}{9}
+
+\bibitem{collewet2011}
+C.~Collewet and E.~Marchand,
+``Photometric visual servoing,''
+\emph{IEEE Trans. Robot.}, vol.~27, no.~4, pp.~828--834, 2011.
+
+\bibitem{crombez2019tro}
+N.~Crombez, E.~M.~Mouaddib, G.~Caron, and F.~Chaumette,
+``Visual servoing with photometric Gaussian mixtures as dense feature,''
+\emph{IEEE Trans. Robot.}, vol.~35, no.~1, pp.~49--63, 2019.
+
+\bibitem{caron2021ral}
+G.~Caron,
+``Defocus-based direct visual servoing,''
+\emph{IEEE Robot. Autom. Lett.}, vol.~6, no.~2, pp.~4057--4064, 2021.
+
+\bibitem{naamani2024iros}
+M.~B.~Naamani, G.~Caron, M.~Morisawa, and E.~M.~Mouaddib,
+``A mathematical characterization of the convergence domain for direct visual servoing,''
+in \emph{Proc. IEEE/RSJ IROS}, pp.~4846--4853, 2024.
+
+\bibitem{guerbas2021}
+S.~E.~Guerbas, N.~Crombez, G.~Caron, and E.~M.~Mouaddib,
+``Photometric Gaussian Mixtures for direct virtual visual servoing of omnidirectional camera,''
+in \emph{IEEE CVPR 2021 Workshop on 3D Vision and Robotics}, 2021.
+
+\end{thebibliography}
+
+\end{document}

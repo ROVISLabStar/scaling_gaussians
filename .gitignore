@@ -20,3 +20,61 @@ dist/
 # IDE
 .vscode/
 .idea/
+
+# Experiment logs and data (large files)
+**/logs/
+**/cache/
+old/
+
+# Papers and generated PDFs
+*.pdf
+
+# Generated images and data in papier/figures
+**/papier_*/figures/*.png
+**/papier_*/figures/*.jpg
+
+# Numpy data files
+*.npz
+*.npy
+
+# Data directories (images, datasets)
+**/data/
+**/figures/*.png
+**/figures/*.jpg
+**/figures/*.pdf
+
+# Rosbags
+*.bag
+*.db3
+
+# Large model checkpoints
+*.pt
+*.pth
+*.ckpt
+
+# Temporary renders
+*.mp4
+*.avi
+
+# LaTeX auxiliary files
+*.aux
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg
+
+# Claude Code
+.claude/
+
+# Separate paper repos (not part of this project)
+gs_vs_dichotomic_planner/
+papier_planning/
+
+# Embedded git repos
+**/mujoco_menagerie/
+
+# Large archives
+*.zip

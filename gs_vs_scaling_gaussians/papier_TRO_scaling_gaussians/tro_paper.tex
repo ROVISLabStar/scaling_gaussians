@@ -1,0 +1,301 @@
+\documentclass[journal]{IEEEtran}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{bm}
+\usepackage{amssymb}
+\usepackage{pifont}
+
+\newcommand{\cmark}{\ding{51}}
+\newcommand{\xmark}{\ding{55}}
+
+\graphicspath{{tro_figures/}}
+
+\title{Scale-Adaptive Photometric Visual Servoing\\in 3D Gaussian Splatting}
+
+\author{Youssef~Alj and Guillaume~Caron
+\thanks{Y. Alj is with UM6P, Morocco. G. Caron is with MIS Laboratory, Universit\'e de Picardie Jules Verne, Amiens, France.}}
+
+\begin{document}
+\maketitle
+
+% ============================================================
+\begin{abstract}
+TODO
+\end{abstract}
+
+\begin{IEEEkeywords}
+Visual servoing, 3D Gaussian Splatting, convergence domain, photometric features
+\end{IEEEkeywords}
+
+% ============================================================
+\section{Introduction}
+\label{sec:intro}
+TODO
+
+% ============================================================
+\section{Related Work}
+\label{sec:related}
+TODO
+
+% ============================================================
+\section{Background}
+\label{sec:background}
+TODO
+
+% ============================================================
+\section{Scale-Adaptive Photometric Visual Servoing}
+\label{sec:method}
+TODO
+
+% ============================================================
+\section{Scale Inflation: Principle}
+\label{sec:principle}
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{alpha_illustration.pdf}
+    \caption{Effect of the scale factor $\alpha$ on 3D Gaussian primitives and their splatting. Top: three ellipsoidal Gaussians in 3D space, inflated by $\alpha$. Bottom: corresponding rendered (splatted) images. At $\alpha=1.0$, the three Gaussians produce sharp, distinct blobs. As $\alpha$ increases, the Gaussians grow and overlap, producing a progressively smoother image --- analogous to the ``power of attraction'' of Crombez et al.~\cite{crombez2019tro}, but operating directly in 3D scene space.}
+    \label{fig:alpha_illustration}
+\end{figure*}
+
+% ============================================================
+\section{Experimental Results}
+\label{sec:experiments}
+
+% ────────────────────────────────────────────────
+\subsection{Effect of Scale Factor on Rendering}
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{scale_effect_multi_scene.pdf}
+    \caption{Influence of the scale factor $\alpha$ on 3DGS rendering for two scenes: \textit{room} (top) and \textit{garden} (bottom). Increasing $\alpha$ inflates the 3D Gaussian covariances, producing progressively smoother rendered images. The outdoor scene (garden) preserves structure at higher $\alpha$ due to its larger depth range, which explains why it requires higher $\alpha$ for optimal convergence (cf. Table~\ref{tab:multi_scene}).}
+    \label{fig:scale_effect}
+\end{figure*}
+
+% ────────────────────────────────────────────────
+\subsection{Cost Function Landscape}
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{cost_landscape_2d.pdf}
+    \caption{Cost function landscape $\mathcal{C}(\Delta t_x, \Delta t_y)$ for different scale factors $\alpha$. The cost is computed as the SSD between the desired image and images rendered at perturbed poses along two translation axes. Increasing $\alpha$ smooths the cost function, suppressing local minima and widening the convergence basin. Beyond $\alpha \approx 2.4$, the gradient vanishes, hindering convergence.}
+    \label{fig:cost_landscape}
+\end{figure*}
+
+
+% ────────────────────────────────────────────────
+\subsection{Convergence Experiment --- Easy Pair}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{experiment_panel_14_10.pdf}
+    \caption{Convergence experiment for pair $14 \to 10$ ($0.24$\,m, $11.6^\circ$). (a)~Residual error: inflated scales converge $\sim$2$\times$ faster. (b)~Pose error (solid: translation, dashed: rotation). (c)~Camera velocities ($\alpha=1.8$) settle to zero. (d)~3D trajectories.}
+    \label{fig:experiment_panel}
+\end{figure}
+
+% ────────────────────────────────────────────────
+\subsection{Desired and Initial Images}
+
+\begin{figure}[t]
+    \centering
+    \begin{subfigure}[b]{0.48\columnwidth}
+        \includegraphics[width=\textwidth]{desired.png}
+        \caption{Desired $\mathbf{I}^*$ ($\alpha=1.0$)}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\columnwidth}
+        \includegraphics[width=\textwidth]{desired_inflated.png}
+        \caption{Desired $\mathbf{I}^*_\alpha$ ($\alpha=1.8$)}
+    \end{subfigure}
+    \\[2mm]
+    \begin{subfigure}[b]{0.48\columnwidth}
+        \includegraphics[width=\textwidth]{initial.png}
+        \caption{Initial $\mathbf{I}$ ($\alpha=1.0$)}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\columnwidth}
+        \includegraphics[width=\textwidth]{initial_inflated.png}
+        \caption{Initial $\mathbf{I}_\alpha$ ($\alpha=1.8$)}
+    \end{subfigure}
+    \caption{Desired and initial images for pair $14 \to 10$. Left column: original rendering ($\alpha=1.0$). Right column: inflated rendering ($\alpha=1.8$). The inflated renders are smoother, increasing the photometric overlap between initial and desired views.}
+    \label{fig:images_pair}
+\end{figure}
+
+% ────────────────────────────────────────────────
+\subsection{Multi-Pose Convergence Study}
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{initial_images_mosaic.pdf}
+    \caption{Initial configurations used in the convergence study. Top: desired image $\mathbf{I}^*$ (view 10). Bottom: 20 randomly selected initial views within the convex hull of training cameras ($0.05 < \|\Delta t\| < 0.6$\,m, $\Delta r < 50^\circ$). The results of this experiment are shown in Table~\ref{tab:convergence_room}.}
+    \label{fig:initial_mosaic}
+\end{figure*}
+
+\begin{table}[t]
+    \centering
+    \caption{Multi-pose convergence on the \textit{room} scene (goal: view~10). \cmark: converged ($\|\Delta t\| < 0.01$\,m, $\Delta r < 1^\circ$). \xmark: failed.}
+    \label{tab:convergence_room}
+    \footnotesize
+    \setlength{\tabcolsep}{2.5pt}
+    \begin{tabular}{@{}rc|cccccc@{}}
+    \toprule
+    \# & $\Delta$ & 1.0 & 1.6 & 1.8 & 2.0 & 2.2 & 2.4 \\
+    \midrule
+    1 & .43m,24° & \xmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+    2 & .30m,17° & \cmark & \cmark & \cmark & \cmark & \cmark & \xmark \\
+    3 & .19m,11° & \cmark & \cmark & \cmark & \cmark & \cmark & \cmark \\
+    4 & .36m,20° & \cmark & \cmark & \cmark & \cmark & \cmark & \cmark \\
+    5 & .06m,~5° & \cmark & \cmark & \cmark & \cmark & \cmark & \cmark \\
+    6 & .11m,12° & \xmark & \xmark & \xmark & \cmark & \cmark & \xmark \\
+    7 & .14m,11° & \xmark & \xmark & \xmark & \cmark & \cmark & \xmark \\
+    8 & .16m,~9° & \xmark & \xmark & \cmark & \cmark & \cmark & \cmark \\
+    9 & .20m,16° & \xmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+    10 & .24m,~7° & \cmark & \cmark & \cmark & \xmark & \cmark & \xmark \\
+    11 & .31m,~6° & \xmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+    12 & .27m,~7° & \xmark & \cmark & \cmark & \cmark & \cmark & \cmark \\
+    13 & .29m,12° & \xmark & \cmark & \cmark & \cmark & \cmark & \cmark \\
+    14 & .34m,15° & \xmark & \xmark & \cmark & \cmark & \cmark & \cmark \\
+    15 & .23m,18° & \xmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+    16 & .34m,36° & \xmark & \xmark & \xmark & \xmark & \xmark & \cmark \\
+    17 & .21m,10° & \xmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+    18 & .50m,18° & \xmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+    19 & .40m,23° & \xmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+    20 & .25m,42° & \xmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+    \midrule
+    & \textbf{Total} & \textbf{5} & \textbf{7} & \textbf{9} & \textbf{10} & \textbf{11} & \textbf{8} \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{convergence_bar_v3.pdf}
+    \caption{Convergence rate vs. scale factor $\alpha$ for the \textit{room} scene (20 poses $\to$ view 10). The optimal range is $\alpha \in [1.8, 2.2]$, which more than doubles the convergence rate compared to the original ($\alpha=1.0$). Beyond $\alpha = 2.4$, over-smoothing degrades performance.}
+    \label{fig:convergence_bar_room}
+\end{figure}
+
+% ────────────────────────────────────────────────
+\subsection{Multi-Scene Evaluation}
+
+\begin{table}[t]
+    \centering
+    \caption{Convergence rate (successful/total) across scenes and scale factors. The optimal $\alpha$ varies slightly between scenes but the range $\alpha \in [2.0, 2.4]$ consistently outperforms the original.}
+    \label{tab:multi_scene}
+    \begin{tabular}{l|cccccc}
+    \toprule
+    \textbf{Scene} & \textbf{Orig.} & $\bm{1.6}$ & $\bm{1.8}$ & $\bm{2.0}$ & $\bm{2.2}$ & $\bm{2.4}$ \\
+    \midrule
+    Room (goal 10) & 5/20 & 7/20 & 9/20 & 10/20 & \textbf{11/20} & 8/20 \\
+    Room (goal 40) & 5/20 & 6/20 & 6/20 & 6/20 & \textbf{7/20} & 4/20 \\
+    Garden & 0/20 & 0/20 & 4/20 & 8/20 & 15/20 & \textbf{17/20} \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+% ────────────────────────────────────────────────
+\subsection{Challenging Configurations}
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{challenging_cases.pdf}
+    \caption{Challenging configurations where the original PVS ($\alpha=1.0$, red trajectory) fails but the scale-adaptive method ($\alpha=2.0$, blue trajectory) converges. Each row shows a different initial pose: (a)~desired image $\mathbf{I}^*$, (b)~initial image $\mathbf{I}$, (c)~image difference $|\mathbf{I}^* - \mathbf{I}|$ (jet colormap), (d)~3D camera trajectories with initial (green) and desired (red) frustums.}
+    \label{fig:challenging}
+\end{figure*}
+
+% ────────────────────────────────────────────────
+\subsection{Noise Robustness}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{noisy_images.pdf}
+    \caption{Desired images with increasing Gaussian noise $\sigma$ (on $[0,255]$ scale). Noise is added to both the desired and current images at each iteration.}
+    \label{fig:noisy_images}
+\end{figure}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{noise_robustness.pdf}
+    \caption{Noise robustness evaluation (pair $5 \to 10$). Final translation error (left) and rotation error (right) vs. noise $\sigma$ (on $[0,255]$ scale). Both methods are equally robust up to $\sigma=10$. At $\sigma \geq 20$, neither converges, with the inflated version degrading slightly more due to the amplification of noise in the smoothed features.}
+    \label{fig:noise_robustness}
+\end{figure}
+
+\begin{table}[t]
+    \centering
+    \caption{Final positioning error at convergence for increasing image noise $\sigma$ (on $[0,255]$ scale). \cmark: converged. \xmark: failed to converge within 500 iterations.}
+    \label{tab:noise}
+    \footnotesize
+    \begin{tabular}{@{}c|ccc|ccc@{}}
+    \toprule
+    & \multicolumn{3}{c|}{\textbf{Original}} & \multicolumn{3}{c}{$\bm{\alpha=2.0}$} \\
+    $\sigma$ & $\epsilon_t$ & $\epsilon_r$ & & $\epsilon_t$ & $\epsilon_r$ & \\
+    \midrule
+    0 & 9.0\,mm & 0.38$^\circ$ & \cmark & 9.6\,mm & 0.32$^\circ$ & \cmark \\
+    5 & 9.6\,mm & 0.39$^\circ$ & \cmark & 9.9\,mm & 0.33$^\circ$ & \cmark \\
+    10 & 9.3\,mm & 0.38$^\circ$ & \cmark & 9.7\,mm & 0.32$^\circ$ & \cmark \\
+    20 & 137\,mm & 5.97$^\circ$ & \xmark & 234\,mm & 9.36$^\circ$ & \xmark \\
+    40 & 200\,mm & 12.1$^\circ$ & \xmark & 304\,mm & 16.1$^\circ$ & \xmark \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+% ────────────────────────────────────────────────
+\subsection{Robustness to 3D Reconstruction Quality}
+
+Unlike classical VS where noise comes from the camera sensor, in 3DGS-based VS the dominant source of imprecision is the quality of the 3D reconstruction itself. We evaluate robustness by perturbing the Gaussian parameters directly: position ($\sigma_p$ as multiples of mean Gaussian scale $\bar{s}$), scale ($\sigma_s$ as relative std), and SH color coefficients ($\sigma_c$).
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{3d_noise_renders.pdf}
+    \caption{Effect of 3D Gaussian perturbations on rendered images. Position and color noise produce mild degradation. Scale noise at $\sigma_s=1.0$ significantly distorts the rendering.}
+    \label{fig:3d_noise_renders}
+\end{figure*}
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{3d_noise_robustness.pdf}
+    \caption{Robustness to 3D Gaussian parameter perturbations (pair $5 \to 10$). Left: position noise. Center: scale noise. Right: SH color noise. Both methods are robust to position and color perturbations. At extreme scale noise ($\sigma_s=1.0$), the inflated method ($\alpha=2.0$) fails ($\times$) because inflation amplifies the noisy scales, while the original remains robust.}
+    \label{fig:3d_noise}
+\end{figure*}
+
+% ============================================================
+\section{Conclusion}
+\label{sec:conclusion}
+TODO
+
+% ============================================================
+\bibliographystyle{IEEEtran}
+\begin{thebibliography}{10}
+
+\bibitem{crombez2019tro}
+N.~Crombez, E.~M.~Mouaddib, G.~Caron, and F.~Chaumette,
+``Visual servoing with photometric Gaussian mixtures as dense feature,''
+\emph{IEEE Trans. Robot.}, vol.~35, no.~1, pp.~49--63, 2019.
+
+\bibitem{collewet2011}
+C.~Collewet and E.~Marchand,
+``Photometric visual servoing,''
+\emph{IEEE Trans. Robot.}, vol.~27, no.~4, pp.~828--834, 2011.
+
+\bibitem{caron2021ral}
+G.~Caron,
+``Defocus-based direct visual servoing,''
+\emph{IEEE Robot. Autom. Lett.}, vol.~6, no.~2, pp.~4057--4064, 2021.
+
+\bibitem{kerbl2023}
+B.~Kerbl, G.~Kopanas, T.~Leimk{\"u}hler, and G.~Drettakis,
+``3D Gaussian Splatting for real-time radiance field rendering,''
+\emph{ACM Trans. Graph.}, vol.~42, no.~4, 2023.
+
+\bibitem{naamani2024iros}
+M.~B.~Naamani, G.~Caron, M.~Morisawa, and E.~M.~Mouaddib,
+``A mathematical characterization of the convergence domain for direct visual servoing,''
+in \emph{Proc. IEEE/RSJ IROS}, pp.~4846--4853, 2024.
+
+\end{thebibliography}
+
+\end{document}

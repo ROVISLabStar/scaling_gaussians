@@ -1,0 +1,650 @@
+\documentclass[11pt]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{subcaption}
+\usepackage{xcolor}
+
+\title{Scale-Adaptive Photometric Visual Servoing\\in 3D Gaussian Splatting\\[0.5em]\large Experimental Notes (Working Document)}
+\author{Youssef Alj \and Guillaume Caron}
+\date{April 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This document collects experimental results for the TRO paper on scale-adaptive photometric visual servoing (PVS) in 3D Gaussian Splatting (3DGS).
+The core idea: inflating the 3D Gaussian scales in a trained 3DGS scene smooths the rendered images, which enlarges the convergence basin of PVS---analogous to PGM-VS~\cite{crombez2019tro} ($\lambda_g$ parameter) and DDVS~\cite{caron2021ral} (optical defocus), but native to the 3D scene representation.
+All experiments use the mip-NeRF 360 ``room'' scene with gsplat~1.5.3.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%% ============================================================
+\section{Background and Motivation}
+%% ============================================================
+
+Photometric Visual Servoing (PVS) minimizes the Sum of Squared Differences (SSD) between a desired image $\mathbf{I}^*$ and the current image $\mathbf{I}(\mathbf{p})$:
+\begin{equation}
+    \mathcal{C}(\mathbf{p}) = \frac{1}{2} \| \mathbf{I}(\mathbf{p}) - \mathbf{I}^* \|^2
+\end{equation}
+PVS achieves sub-millimeter precision at convergence but has a narrow convergence domain due to the highly non-linear cost function.
+
+Prior work enlarged the convergence domain by \emph{blurring} images:
+\begin{itemize}
+    \item \textbf{PGM-VS}~\cite{crombez2019tro}: convolves each pixel with a 2D Gaussian of spread $\lambda_g$ (image-space transform, $O((NM)^2)$ complexity).
+    \item \textbf{DDVS}~\cite{caron2021ral}: uses optical defocus (thin lens model) to naturally blur via Circle of Confusion ($O(NM)$ complexity).
+    \item \textbf{Naamani et al.}~\cite{naamani2024iros}: proves mathematically that the convergence domain radius is proportional to the Gaussian spread $\lambda(Z)$.
+\end{itemize}
+
+\textbf{Our contribution:} In 3DGS, the scene representation \emph{is} a mixture of 3D Gaussians. Scaling their size is a native, scene-aware blur that directly modifies the rendering model. Unlike PGM-VS (post-processing) or DDVS (optical), this operates in the 3D scene representation itself. We show that scaling 3D Gaussian primitives by a factor $\alpha$ widens the convergence basin, connecting the theoretical results of~\cite{naamani2024iros} to the 3DGS rendering equation.
+
+
+%% ============================================================
+\section{Experimental Setup}
+%% ============================================================
+
+\subsection{Scene and Model}
+\begin{itemize}
+    \item Scene: mip-NeRF 360 ``room'' (311 training views)
+    \item 3DGS model: gsplat 1.5.3, trained for 30k iterations at data\_factor=1
+    \item Rendering: pinhole camera model, $778 \times 518$ pixels (data\_factor=4)
+    \item Feature: \texttt{pinhole} (luminance with pinhole interaction matrix)
+\end{itemize}
+
+\subsection{Scaling Modes}
+Four scaling strategies are compared:
+\begin{enumerate}
+    \item \textbf{Original} ($\alpha=1$): baseline PVS with trained Gaussian scales
+    \item \textbf{Inflated} ($\alpha=1.8$): all Gaussian scales multiplied by constant factor throughout servoing
+    \item \textbf{Coarse-to-fine}: scale decays from $\alpha$ to 1.0 over 5 phases (wide basin $\to$ precise convergence)
+    \item \textbf{Error-adaptive}: scale factor proportional to normalized error ($\alpha_t = 1 + (\alpha-1) \cdot \min(e_t/e_0, 1)$)
+\end{enumerate}
+
+\subsection{VS Parameters}
+\begin{itemize}
+    \item Control law: Levenberg-Marquardt with $\mu=0.01$, $\lambda=10$
+    \item Velocity clamping: $\|v_t\| \leq 0.5$~m/s, $\|v_r\| \leq 0.3$~rad/s
+    \item Max iterations: 1000
+    \item Convergence: photometric error below threshold at scale$\approx 1$ \emph{or} pose error $< 5$mm and $< 0.5^\circ$
+\end{itemize}
+
+
+%% ============================================================
+\section{Cost Function Landscape}
+\label{sec:cost_landscape}
+%% ============================================================
+
+The cost function is evaluated along each of the 6 DoF independently, sweeping through the desired pose while holding the other 5 fixed. This is done for four scale factors: $\alpha \in \{1.0, 1.5, 2.0, 3.0\}$.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\textwidth]{figures/cost_landscape_v150.pdf}
+    \caption{Cost function landscape for view 150. Each subplot sweeps one DoF. Increasing the scale factor $\alpha$ smooths the cost function and widens the basin of attraction. At $\alpha=3.0$ (purple), the cost is nearly flat---gradients are too weak for effective optimization.}
+    \label{fig:cost_v150}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\textwidth]{figures/cost_landscape_v40.pdf}
+    \caption{Cost function landscape for view 40. Same trend as Fig.~\ref{fig:cost_v150} with scene-dependent asymmetry. Note the local minima visible in the $t_z$ and $\theta_y$ plots at $\alpha=1.0$ (blue), which disappear at higher scale factors.}
+    \label{fig:cost_v40}
+\end{figure}
+
+\subsection{Key Observations}
+
+\begin{enumerate}
+    \item \textbf{Smoothing effect:} Increasing $\alpha$ consistently smooths the cost function across all 6 DoF and both views. Local minima visible at $\alpha=1.0$ (bumps in $t_z$, $\theta_y$) are eliminated at $\alpha \geq 1.5$.
+
+    \item \textbf{Basin width grows with $\alpha$:} The region where the cost function has a meaningful gradient (i.e., where a Gauss-Newton optimizer would make progress) widens with increasing scale factor. This is consistent with Naamani et al.'s theoretical result that the convergence radius $r \propto \lambda(Z)$.
+
+    \item \textbf{Gradient-basin tradeoff:} At $\alpha=3.0$, the cost function becomes nearly flat (max error $\sim 2000$ vs $\sim 50000$ at $\alpha=1.0$). While the basin is maximally wide, the gradients are too weak for effective optimization. This explains why moderate inflation ($\alpha \approx 1.5$--$2.0$) works best in practice.
+
+    \item \textbf{The minimum remains at zero:} For all scale factors, the global minimum is at the desired pose with zero cost. Scaling Gaussians does not shift the equilibrium---it only reshapes the cost landscape around it.
+\end{enumerate}
+
+
+%% ============================================================
+\section{Single-Pair Servo Comparisons}
+\label{sec:single_pair}
+%% ============================================================
+
+\subsection{Screening Results}
+
+We tested 13 view pairs at various difficulty levels to identify cases where inflated mode succeeds and original fails. Results:
+
+\begin{table}[h!]
+\centering
+\caption{Screening results: original vs. inflated ($\alpha=1.8$), max 1000 iterations.}
+\label{tab:screening}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Pair} & \textbf{Distance} & \textbf{Original} & \textbf{Inflated} & \textbf{Verdict} \\
+\midrule
+$0 \to 4$     & 0.19m, 10.8$^\circ$ & FAIL      & 792 it   & Inflated wins \\
+$40 \to 44$   & 0.14m, 12.6$^\circ$ & FAIL      & 371 it   & Inflated wins \\
+$130 \to 133$ & 0.14m, 12.1$^\circ$ & FAIL      & 866 it   & Inflated wins \\
+$150 \to 153$ & 0.18m, 14.8$^\circ$ & FAIL      & 727 it   & Inflated wins \\
+\midrule
+$10 \to 14$   & 0.24m, 11.6$^\circ$ & 413 it    & \textbf{141 it}   & 3$\times$ faster \\
+$65 \to 68$   & 0.14m, 10.7$^\circ$ & 757 it    & \textbf{334 it}   & 2$\times$ faster \\
+\midrule
+$0 \to 5$     & 0.24m, 14.2$^\circ$ & FAIL      & FAIL     & Both fail \\
+$50 \to 55$   & 0.09m, 14.6$^\circ$ & FAIL      & FAIL     & Both fail \\
+$100 \to 105$ & 0.15m, 15.1$^\circ$ & FAIL      & FAIL     & Both fail \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+When original fails, it is stuck on a plateau: the error barely decreases and the camera drifts away from the goal. More iterations do not help---the optimizer is trapped in a local minimum of the cost function at $\alpha=1.0$.
+
+\subsection{Full 4-Mode Comparison}
+
+Three pairs were tested with all four scaling modes:
+
+\begin{table}[h!]
+\centering
+\caption{Full comparison: iterations to convergence (FAIL = did not converge in 1000 it).}
+\label{tab:full_comparison}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Pair} & \textbf{Dist.} & \textbf{Original} & \textbf{Inflated} & \textbf{C2F} & \textbf{Err-Adapt} \\
+\midrule
+$40 \to 44$ & 0.14m, 12.6$^\circ$ & FAIL & \textbf{371} & 406 & 549 \\
+$0 \to 4$   & 0.19m, 10.8$^\circ$ & FAIL & 792 & \textbf{735} & 799 \\
+$10 \to 14$ & 0.24m, 11.6$^\circ$ & 413  & \textbf{141} & 145 & 162 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Findings:}
+\begin{itemize}
+    \item All three scaling modes consistently outperform original.
+    \item Inflated and coarse-to-fine are competitive; coarse-to-fine is sometimes slightly better (pair $0 \to 4$).
+    \item Error-adaptive works but is the slowest scaling mode---the error does not decrease monotonically, causing the scale to stay high.
+    \item When both original and scaling modes converge (pair $10 \to 14$), scaling modes are $\sim 3\times$ faster.
+\end{itemize}
+
+
+%% ============================================================
+\section{Visual Comparison: Desired $|$ Current $|$ Diff}
+\label{sec:visual}
+%% ============================================================
+
+Fig.~\ref{fig:render_original}--\ref{fig:render_ea} show the [Desired $|$ Current $|$ $|\text{Diff}| \times 3$] images at initialization and convergence/failure for pair $40 \to 44$.
+
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}{\textwidth}
+        \includegraphics[width=\textwidth]{figures/render_40_44_original_start.png}
+        \caption{Initialization (it=0)}
+    \end{subfigure}
+    \begin{subfigure}{\textwidth}
+        \includegraphics[width=\textwidth]{figures/render_40_44_original_end.png}
+        \caption{Final state (it=980, FAILED)}
+    \end{subfigure}
+    \caption{\textbf{Original mode} ($\alpha=1.0$): sharp images with highly textured diff. The optimizer is trapped in a local minimum---the camera has drifted to a wrong viewpoint.}
+    \label{fig:render_original}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}{\textwidth}
+        \includegraphics[width=\textwidth]{figures/render_40_44_inflated_start.png}
+        \caption{Initialization (it=0)}
+    \end{subfigure}
+    \begin{subfigure}{\textwidth}
+        \includegraphics[width=\textwidth]{figures/render_40_44_inflated_end.png}
+        \caption{Converged (it=360)}
+    \end{subfigure}
+    \caption{\textbf{Inflated mode} ($\alpha=1.8$): blurred images with smooth, structured diff. The optimizer converges in 371 iterations---the diff becomes nearly black at convergence.}
+    \label{fig:render_inflated}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}{\textwidth}
+        \includegraphics[width=\textwidth]{figures/render_40_44_coarse_to_fine_start.png}
+        \caption{Initialization (it=0, scale=1.8)}
+    \end{subfigure}
+    \begin{subfigure}{\textwidth}
+        \includegraphics[width=\textwidth]{figures/render_40_44_c2f_end.png}
+        \caption{Converged (it=400, scale=1.55)}
+    \end{subfigure}
+    \caption{\textbf{Coarse-to-fine mode}: starts inflated, scale decays over phases. Converges in 406 iterations during the second phase ($\alpha=1.55$).}
+    \label{fig:render_c2f}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}{\textwidth}
+        \includegraphics[width=\textwidth]{figures/render_40_44_error_adaptive_start.png}
+        \caption{Initialization (it=0, scale=1.8)}
+    \end{subfigure}
+    \begin{subfigure}{\textwidth}
+        \includegraphics[width=\textwidth]{figures/render_40_44_ea_end.png}
+        \caption{Converged (it=540)}
+    \end{subfigure}
+    \caption{\textbf{Error-adaptive mode}: scale tracks the error ratio. Converges in 549 iterations but scale remains high ($\sim 1.5$) because the error plateau prevents scale reduction.}
+    \label{fig:render_ea}
+\end{figure}
+
+
+%% ============================================================
+\section{Multi-Scene Batch Evaluation}
+\label{sec:multi_scene}
+%% ============================================================
+
+We evaluate all four scaling modes on four mip-NeRF 360 scenes: \textbf{room} (indoor), \textbf{kitchen} (indoor), \textbf{garden} (outdoor), and \textbf{bicycle} (outdoor).
+For each scene, 15 random trials are run per perturbation level (SMALL: $\pm 0.05$m, $\pm 5^\circ$; MEDIUM: $\pm 0.15$m, $\pm 15^\circ$; LARGE: $\pm 0.30$m, $\pm 30^\circ$). All start poses are constrained to lie within the convex hull of training cameras. Maximum 1000 iterations.
+
+\begin{table}[h!]
+\centering
+\caption{Success rate (\%) across 4 scenes, 15 trials per level, $\alpha = 1.8$.}
+\label{tab:multi_scene}
+\begin{tabular}{l|ccc|ccc|ccc|ccc}
+\toprule
+& \multicolumn{3}{c|}{\textbf{Room}} & \multicolumn{3}{c|}{\textbf{Kitchen}} & \multicolumn{3}{c|}{\textbf{Garden}} & \multicolumn{3}{c}{\textbf{Bicycle}} \\
+\textbf{Mode} & S & M & L & S & M & L & S & M & L & S & M & L \\
+\midrule
+Original       & 87 & 47 & 0  & 67 & 20 & 0 & 67 & 20 & 0 & 47 & 0 & 0 \\
+\textbf{Inflated}       & \textbf{100} & \textbf{73} & \textbf{40} & \textbf{100} & \textbf{40} & 0 & \textbf{87} & \textbf{40} & 0 & 53 & 0 & 0 \\
+Coarse-to-fine & 100 & 80 & 33 & 80 & 40 & 0 & 80 & 33 & 0 & 53 & 0 & 0 \\
+Error-adaptive & 100 & 87 & 27 & 93 & 33 & 7 & 93 & 33 & 0 & 60 & 0 & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Analysis}
+
+\begin{itemize}
+    \item \textbf{Inflated consistently outperforms original} across all scenes, especially on medium perturbations: $+26\%$ on room, $+20\%$ on kitchen/garden.
+    \item \textbf{Indoor scenes benefit most} (room, kitchen): inflated achieves $40\%$ success on large perturbations in room where original scores $0\%$.
+    \item \textbf{Bicycle is hard for all methods}: even inflated barely improves over original ($+6\%$). This outdoor scene with thin structures and complex geometry has limited overlap between training views, degrading the GS rendering quality for displaced poses.
+    \item \textbf{Coarse-to-fine $\approx$ inflated}: competitive on most scenes, sometimes slightly better (room medium: 80\% vs 73\%).
+    \item \textbf{Error-adaptive} shows good results on small perturbations (93\% on garden/kitchen) but is less consistent on harder cases.
+\end{itemize}
+
+
+%% ============================================================
+\section{Convergence Domain Estimation}
+\label{sec:conv_domain}
+%% ============================================================
+
+We estimate the convergence domain by binary search: for each of the 6 DoF, find the maximum displacement from the desired pose that still yields convergence. This is tested for $\alpha \in \{1.0, 1.5, 2.0, 3.0\}$ on view 40 of the room scene (6 bisection steps, $\pm$ directions).
+
+\begin{table}[h!]
+\centering
+\caption{Convergence domain: maximum convergent displacement per axis (view 40, room).}
+\label{tab:conv_domain}
+\begin{tabular}{l|ccc|ccc}
+\toprule
+& \multicolumn{3}{c|}{\textbf{Translation (m)}} & \multicolumn{3}{c}{\textbf{Rotation (deg)}} \\
+\textbf{Mode} & $t_x$ & $t_y$ & $t_z$ & $\theta_x$ & $\theta_y$ & $\theta_z$ \\
+\midrule
+Original ($\alpha=1.0$)  & 0.116 & 0.041 & 0.078 & 11.0 & 5.9 & 25.5 \\
+\textbf{Inflated} ($\alpha=1.5$)  & \textbf{0.234} & 0.041 & 0.078 & \textbf{12.4} & \textbf{10.5} & \textbf{29.8} \\
+Inflated ($\alpha=2.0$)  & 0.103 & 0.041 & 0.078 & \textbf{21.3} & \textbf{15.7} & \textbf{29.8} \\
+Inflated ($\alpha=3.0$)  & 0.003 & 0.009 & 0.009 & 0.7 & 0.7 & 0.7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Analysis}
+
+\begin{itemize}
+    \item \textbf{$\alpha = 1.5$ doubles the $t_x$ convergence domain} (0.116m $\to$ 0.234m) and significantly enlarges rotational domains.
+    \item \textbf{$\alpha = 2.0$ further improves rotations} ($\theta_x$: $11.0^\circ \to 21.3^\circ$, $\theta_y$: $5.9^\circ \to 15.7^\circ$) but slightly reduces translation domains.
+    \item \textbf{$\alpha = 3.0$ destroys convergence}: the cost function is too flat, gradients vanish. This confirms the cost landscape observation (Sec.~\ref{sec:cost_landscape}).
+    \item \textbf{The optimal $\alpha$ depends on the DoF}: translations benefit most from moderate scaling ($\alpha = 1.5$), while rotations continue to improve up to $\alpha = 2.0$. This suggests an \emph{anisotropic} scaling strategy could be beneficial.
+    \item The non-monotonic behavior in $t_x$ ($0.116 \to 0.234 \to 0.103$) shows that the relationship between $\alpha$ and convergence domain is not simply linear, unlike the prediction of Naamani et al.~\cite{naamani2024iros} for 2D Gaussian blur. This is likely because 3DGS scaling introduces depth-dependent effects not captured by the 2D model.
+\end{itemize}
+
+
+%% ============================================================
+\section{Discussion}
+\label{sec:discussion}
+%% ============================================================
+\section{PGM-VS Comparison}
+\label{sec:pgm_comparison}
+%% ============================================================
+
+We compare scale-adaptive PVS against PGM-VS~\cite{crombez2019tro}, the state-of-the-art image-space Gaussian smoothing method.
+PGM-VS convolves each pixel with a 2D isotropic Gaussian of spread $\lambda_g$, creating a Photometric Gaussian Mixture that serves as the visual feature.
+A multi-level strategy is used (matching the C++ reference implementation~\cite{crombez2019tro}): $\lambda_g \in \{5.0, 2.5, 1.0\}$, switching to the next level when the error stalls. Control uses Levenberg-Marquardt ($\mu_\text{LM} = 0.01$, gain~$= 10$).
+
+\subsection{Implementation Note}
+The Python reimplementation of PGM-VS required careful debugging. A sign error in the interaction matrix was identified: \texttt{F.conv2d} in PyTorch computes cross-correlation (no kernel flip), which negates the odd derivative kernels $K_u$, $K_v$, effectively flipping the entire interaction matrix. The fix was verified by numerical gradient checking (cosine similarity $> 0.82$ on all 6 DoFs).
+
+\subsection{Room Scene Results}
+
+\begin{table}[h!]
+\centering
+\caption{Full PGM-VS comparison on 17 view pairs (room scene, data\_factor=8). Order: Original $|$ Inflated $|$ PGM-VS.}
+\label{tab:pgm_full}
+\small
+\begin{tabular}{lc|ccc}
+\toprule
+\textbf{Pair} & \textbf{Distance} & \textbf{Original} & \textbf{Inflated ($\alpha\!=\!1.8$)} & \textbf{PGM-VS} \\
+\midrule
+\multicolumn{5}{l}{\emph{PGM faster, all three converge:}} \\
+$5 \to 7$     & 0.12m, 6$^\circ$  & 71 it   & 42 it   & \textbf{23 it}  \\
+$20 \to 23$   & 0.10m, 5$^\circ$  & 88 it   & 49 it   & \textbf{18 it}  \\
+$0 \to 3$     & 0.11m, 8$^\circ$  & 215 it  & 211 it  & \textbf{29 it}  \\
+$75 \to 78$   & 0.15m, 8$^\circ$  & 494 it  & 143 it  & \textbf{69 it}  \\
+$10 \to 14$   & 0.24m, 12$^\circ$ & 154 it  & 81 it   & \textbf{58 it}  \\
+$65 \to 68$   & 0.14m, 11$^\circ$ & 352 it  & 182 it  & \textbf{60 it}  \\
+\midrule
+\multicolumn{5}{l}{\emph{PGM faster, original fails:}} \\
+$0 \to 4$     & 0.19m, 11$^\circ$ & FAIL    & 391 it  & \textbf{49 it}  \\
+$95 \to 98$   & 0.18m, 11$^\circ$ & FAIL    & 413 it  & \textbf{77 it}  \\
+$150 \to 153$ & 0.18m, 15$^\circ$ & FAIL    & 411 it  & \textbf{124 it} \\
+$15 \to 17$   & 0.11m, 5$^\circ$  & FAIL    & 446 it  & \textbf{73 it}  \\
+$18 \to 19$   & 0.17m, 11$^\circ$ & FAIL    & 464 it  & \textbf{137 it} \\
+\midrule
+\multicolumn{5}{l}{\emph{Inflated wins, PGM fails:}} \\
+$40 \to 44$   & 0.14m, 13$^\circ$ & FAIL    & \textbf{199 it}  & FAIL \\
+$110 \to 113$ & 0.15m, 7$^\circ$  & FAIL    & \textbf{149 it}  & FAIL \\
+$130 \to 133$ & 0.14m, 12$^\circ$ & FAIL    & \textbf{478 it}  & FAIL \\
+$170 \to 173$ & 0.26m, 12$^\circ$ & FAIL    & \textbf{259 it}  & FAIL \\
+\midrule
+\multicolumn{5}{l}{\emph{Both fail:}} \\
+$30 \to 32$   & 0.11m, 12$^\circ$ & \multicolumn{3}{c}{All methods fail} \\
+$100 \to 103$ & 0.11m, 13$^\circ$ & \multicolumn{3}{c}{All methods fail} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Summary (room):} Out of 17 pairs, PGM-VS converges on 11, inflated on 15, original on 6. When both PGM and inflated succeed, PGM is 2--8$\times$ faster. But inflated wins on 4 pairs where PGM fails.
+
+\subsection{Kitchen Scene Results}
+
+\begin{table}[h!]
+\centering
+\caption{Kitchen scene: all three methods converge on all tested pairs. PGM is consistently fastest.}
+\label{tab:pgm_kitchen}
+\begin{tabular}{lc|ccc}
+\toprule
+\textbf{Pair} & \textbf{Distance} & \textbf{Original} & \textbf{Inflated} & \textbf{PGM-VS} \\
+\midrule
+$0 \to 2$   & 0.08m, 5$^\circ$ & 92 it   & 80 it   & \textbf{23 it}  \\
+$0 \to 3$   & 0.12m, 8$^\circ$ & 183 it  & 133 it  & \textbf{54 it}  \\
+$3 \to 5$   & 0.10m, 5$^\circ$ & 103 it  & 81 it   & \textbf{29 it}  \\
+$3 \to 6$   & 0.15m, 8$^\circ$ & 266 it  & 148 it  & \textbf{47 it}  \\
+$6 \to 8$   & 0.10m, 6$^\circ$ & 110 it  & 75 it   & \textbf{53 it}  \\
+$6 \to 9$   & 0.15m, 8$^\circ$ & 195 it  & 111 it  & \textbf{89 it}  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Garden Scene Results}
+
+\begin{table}[h!]
+\centering
+\caption{Garden scene: harder outdoor scene. PGM and inflated have complementary coverage.}
+\label{tab:pgm_garden}
+\begin{tabular}{lc|ccc}
+\toprule
+\textbf{Pair} & \textbf{Distance} & \textbf{Original} & \textbf{Inflated} & \textbf{PGM-VS} \\
+\midrule
+$15 \to 16$ & 0.18m, 8$^\circ$  & FAIL    & 446 it  & \textbf{73 it}  \\
+$18 \to 19$ & 0.17m, 11$^\circ$ & FAIL    & 464 it  & \textbf{137 it} \\
+$9 \to 10$  & 0.16m, 8$^\circ$  & FAIL    & \textbf{357 it}  & FAIL \\
+$0 \to 1$   & 0.20m, 12$^\circ$ & \multicolumn{3}{c}{Only original converges (117 it)} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Qualitative Comparison}
+
+Fig.~\ref{fig:qualitative_65_68} shows the [Desired $|$ Current $|$ $|\text{Diff}| \times 3$] visualization for all three methods on pair $65 \to 68$. Original PVS and inflated 3DGS show RGB rendered images; PGM-VS shows the Gaussian mixture features with jet colormap (cf.~Guerbas et al.~\cite{guerbas2021} Fig.~1), with the label $\lambda_g$ indicating the current Gaussian extent.
+
+\begin{figure}[p]
+\centering
+\begin{subfigure}{0.95\textwidth}
+    \includegraphics[width=\textwidth]{figures/jet_65_68_original_start.png}
+    \caption{Original PVS: initialization}
+\end{subfigure}
+\begin{subfigure}{0.95\textwidth}
+    \includegraphics[width=\textwidth]{figures/jet_65_68_original_end.png}
+    \caption{Original PVS: converged (367 it)}
+\end{subfigure}
+\begin{subfigure}{0.95\textwidth}
+    \includegraphics[width=\textwidth]{figures/jet_65_68_inflated_start.png}
+    \caption{Inflated ($\alpha=1.8$): initialization}
+\end{subfigure}
+\begin{subfigure}{0.95\textwidth}
+    \includegraphics[width=\textwidth]{figures/jet_65_68_inflated_end.png}
+    \caption{Inflated ($\alpha=1.8$): converged (204 it)}
+\end{subfigure}
+\begin{subfigure}{0.95\textwidth}
+    \includegraphics[width=\textwidth]{figures/jet_65_68_pgm_vs_start.png}
+    \caption{PGM-VS ($\lambda_g=5.0$, jet colormap): initialization}
+\end{subfigure}
+\begin{subfigure}{0.95\textwidth}
+    \includegraphics[width=\textwidth]{figures/jet_65_68_pgm_vs_end.png}
+    \caption{PGM-VS ($\lambda_g=5.0$): converged (84 it)}
+\end{subfigure}
+\caption{Qualitative comparison on pair $65 \to 68$ (0.139m, 10.7$^\circ$). All three methods converge. PGM-VS is fastest (84~it), inflated is 2$\times$ faster than original (204 vs 367~it). PGM uses jet colormap.}
+\label{fig:qualitative_65_68}
+\end{figure}
+
+\subsection{Analysis}
+
+\begin{itemize}
+    \item \textbf{PGM-VS converges 2--8$\times$ faster} than inflated 3DGS when both succeed. The 2D Gaussian smoothing creates very smooth gradients in the cost function.
+    \item \textbf{Inflated 3DGS has a wider convergence domain}: on 4 room pairs and 1 garden pair, inflated succeeds where PGM fails. The 3D blur is depth-dependent, which better captures the scene geometry.
+    \item \textbf{Kitchen is easiest}: all methods converge on all tested pairs. PGM is 2--3$\times$ faster.
+    \item \textbf{The methods are complementary}: PGM excels for fast convergence within a moderate basin, while inflated 3DGS provides a wider basin. A hybrid strategy (inflated for approach, PGM/original for precision) could combine both advantages.
+    \item \textbf{Scale factor selection}: PGM uses $\lambda_g$ which operates in pixel space (isotropic), while 3DGS uses $\alpha$ which operates in 3D (depth-dependent). The optimal $\alpha$ is scene-dependent but $\alpha \approx 1.5$--$2.0$ works robustly across scenes (Table~\ref{tab:multi_scene}). Understanding how to automatically select $\alpha$ from the 3DGS model properties (e.g., average Gaussian scale distribution) is an important open question.
+\end{itemize}
+
+\subsection{PGM-VS Implementation Caveat}
+\label{sec:pgm_caveat}
+
+\textbf{Important:} The PGM-VS results presented here use a \emph{Python reimplementation} of PGM-VS, not the original C++ PeR library~\cite{crombez2019tro}. During development, we identified and fixed a sign error in the interaction matrix caused by PyTorch's \texttt{F.conv2d} computing cross-correlation instead of convolution (verified by per-DOF numerical gradient checking). However, the reimplementation may still differ from the reference in subtle ways:
+
+\begin{enumerate}
+    \item The C++ PeR \texttt{servo.control()} applies a \textbf{scene-depth normalization} via \texttt{initControl(gain, sceneDepth)} that is absent in our implementation.
+    \item The C++ code applies an \textbf{additional velocity negation} (\texttt{v6[numDOF] = -v[indDOF]}) before sending to the robot, suggesting a different sign convention in the PeR control law.
+    \item The \textbf{multi-level switching criterion} in the C++ code is based on $\lambda_g$ convergence toward $\lambda_g^*$, whereas our implementation uses error stall detection.
+\end{enumerate}
+
+As a consequence, the PGM-VS convergence domain reported here may be \emph{narrower} than what the reference PeR library achieves. In particular, PGM-VS should theoretically converge on every pair where original PVS converges (since PGM with small $\lambda_g$ approximates PVS), which is not always the case in our results. The 3DGS scale inflation results, which use the same interaction matrix as original PVS (only the rendered images change), are not affected by this limitation.
+
+\vspace{0.5em}
+\noindent\fbox{\parbox{\textwidth-2\fboxsep}{
+\textbf{TODO:} Contact Guillaume Caron to obtain the PeR library source code for a proper PGM-VS comparison. Specifically, we need to understand: (1)~the exact \texttt{control()} implementation with scene-depth normalization, (2)~the sign conventions in the interaction matrix and error vector, and (3)~whether the PeR library uses a different gain/damping structure than our Levenberg-Marquardt implementation. This will ensure a fair comparison in the final TRO submission.
+}}
+
+
+%% ============================================================
+\section{Smoothing Visualization: 3DGS Scale vs PGM $\lambda_g$}
+\label{sec:smoothing_viz}
+%% ============================================================
+
+Following Guerbas et al.~\cite{guerbas2021}, we visualize the smoothing effect using jet colormap representations (Fig.~\ref{fig:scale_vs_pgm}). Increasing the 3DGS scale factor $\alpha$ or the PGM extent $\lambda_g$ produces progressively smoother images, but with fundamentally different characteristics: 3DGS blur is depth-dependent and anisotropic (from the 3D Gaussian projection), while PGM blur is isotropic (same kernel at every pixel).
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\textwidth]{figures/scale_vs_pgm_comparison.pdf}
+    \caption{Smoothing comparison (view 60, jet colormap). \textbf{Top:} 3DGS scale inflation at $\alpha \in \{1.0, 1.2, 1.5, 1.8, 2.0, 3.0\}$ --- depth-dependent, anisotropic blur. \textbf{Bottom:} PGM Gaussian extent at $\lambda_g \in \{0.1, 1.0, 3.0, 5.0, 7.0, 10.0\}$ --- isotropic 2D blur (cf.\ Guerbas et al.~\cite{guerbas2021} Fig.~1).}
+    \label{fig:scale_vs_pgm}
+\end{figure}
+
+
+%% ============================================================
+\section{Scale Factor Comparison}
+\label{sec:scale_sweep_qual}
+%% ============================================================
+
+We compare inflated mode at different scale factors on the challenging pair $94 \to 60$ (0.556m, 26.7$^\circ$):
+
+\begin{table}[h!]
+\centering
+\caption{Effect of scale factor $\alpha$ on pair $94 \to 60$ (max 2000 iterations).}
+\label{tab:scale_sweep}
+\begin{tabular}{lccl}
+\toprule
+\textbf{Scale $\alpha$} & \textbf{Final $t$ (m)} & \textbf{Final $r$ ($^\circ$)} & \textbf{Result} \\
+\midrule
+1.0 (original) & 0.73 & 42.1 & FAIL \\
+1.2 & 0.98 & 43.3 & FAIL (diverges) \\
+1.4 & 0.63 & 30.3 & FAIL (plateaus) \\
+\textbf{1.8} & \textbf{0.00} & \textbf{0.1} & \textbf{CONVERGED ($\sim$600 it)} \\
+\textbf{2.0} & \textbf{0.00} & \textbf{0.1} & \textbf{CONVERGED ($\sim$600 it)} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Only $\alpha \geq 1.8$ converges for this hard pair. $\alpha = 1.2$ and $1.4$ fail to escape the local minimum --- insufficient smoothing. This confirms the cost function landscape analysis (Sec.~\ref{sec:cost_landscape}): moderate scaling ($\alpha \approx 1.5$--$2.0$) is the sweet spot.
+
+
+%% ============================================================
+\section{Showcase Experiments}
+\label{sec:showcases}
+%% ============================================================
+
+We present three representative scenarios with per-mode convergence thresholds (original: 100, inflated: 0.1, PGM-VS: 100).
+
+\subsection{All Methods Converge (pair $95 \to 98$, 0.175m, 11.4$^\circ$)}
+
+\begin{table}[h!]
+\centering
+\caption{Pair $95 \to 98$: all methods converge with different speeds.}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Method} & \textbf{Iterations} & \textbf{Speedup} \\
+\midrule
+Original PVS & 1305 & 1$\times$ \\
+Inflated ($\alpha=1.8$) & 436 & 3$\times$ \\
+PGM-VS ($\lambda_g = 5 \to 1$) & 103 & \textbf{13$\times$} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Inflated Only (pair $40 \to 44$, 0.142m, 12.6$^\circ$)}
+
+\begin{table}[h!]
+\centering
+\caption{Pair $40 \to 44$: only inflated 3DGS converges.}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Method} & \textbf{Result} & \textbf{Iterations} \\
+\midrule
+Original PVS & FAIL & 2000 \\
+\textbf{Inflated ($\alpha=1.8$)} & \textbf{CONVERGED} & \textbf{224} \\
+PGM-VS ($\lambda_g = 5 \to 1$) & FAIL (stalled) & 491 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Hard Pair (pair $94 \to 60$, 0.556m, 26.7$^\circ$)}
+
+\begin{table}[h!]
+\centering
+\caption{Pair $94 \to 60$: very large displacement, only inflated succeeds.}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Method} & \textbf{Result} & \textbf{Iterations} \\
+\midrule
+Original PVS & FAIL & 2000 \\
+\textbf{Inflated ($\alpha=1.8$)} & \textbf{CONVERGED} & \textbf{612} \\
+PGM-VS (all $\lambda_g$) & FAIL & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+PGM-VS was also tested with $\lambda_g \in \{1, 3, 5, 7, 10\}$ individually on this pair --- all failed. The 3D-native scaling provides a wider convergence domain than any 2D Gaussian extent.
+
+\subsection{Large-Scale Comparison (35 pairs, indices 0--150)}
+
+\begin{table}[h!]
+\centering
+\caption{Summary across 35 view pairs (room scene). ``Unique'' = converges where the other two fail.}
+\label{tab:35pairs}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Method} & \textbf{Converged} & \textbf{Success Rate} & \textbf{Unique Wins} \\
+\midrule
+Original PVS & 19/35 & 54\% & 2 \\
+\textbf{Inflated ($\alpha=1.8$)} & \textbf{22/35} & \textbf{63\%} & \textbf{7} \\
+PGM-VS ($\lambda_g = 5 \to 1$) & 15/35 & 43\% & 2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The methods are \emph{complementary}: inflated 3DGS has the widest convergence domain (22/35), PGM-VS is fastest when it works (2--13$\times$), and original PVS achieves highest precision. A hybrid approach could combine all three.
+
+
+%% ============================================================
+\section{Discussion}
+\label{sec:discussion}
+%% ============================================================
+
+\subsection{Connection to Theory}
+
+The cost function landscape (Sec.~\ref{sec:cost_landscape}), convergence domain measurements (Sec.~\ref{sec:conv_domain}), and smoothing visualization (Sec.~\ref{sec:smoothing_viz}) validate and extend the theoretical framework of Naamani et al.~\cite{naamani2024iros}:
+
+\begin{itemize}
+    \item \textbf{Confirmed:} increasing Gaussian spread smooths the cost function and widens the convergence basin (Figs.~\ref{fig:cost_v150}--\ref{fig:cost_v40}).
+    \item \textbf{Extended:} in 3DGS, the relationship between scale factor and convergence domain is non-monotonic and DoF-dependent, unlike the simpler 2D case.
+    \item \textbf{New insight:} there exists an optimal scale range ($\alpha \approx 1.5$--$2.0$) that maximizes the convergence domain. Beyond this, the gradient-basin tradeoff becomes unfavorable ($\alpha = 3.0$ collapses convergence).
+    \item \textbf{3D vs 2D blur:} 3DGS scaling produces depth-dependent anisotropic blur (Fig.~\ref{fig:scale_vs_pgm}), compared to PGM's isotropic 2D blur. This scene-aware smoothing explains the wider convergence domain of inflated 3DGS.
+\end{itemize}
+
+\subsection{Complementarity of Methods}
+
+The three approaches occupy different points in the convergence speed--convergence domain tradeoff:
+\begin{itemize}
+    \item \textbf{PGM-VS:} Fastest convergence (2--13$\times$), narrowest basin (15/35 pairs). Best for moderate displacements.
+    \item \textbf{Inflated 3DGS:} Widest basin (22/35 pairs), moderate speed. Best for large displacements.
+    \item \textbf{Original PVS:} Highest precision, moderate basin (19/35 pairs). Best for final positioning.
+\end{itemize}
+
+A practical hybrid strategy: (1) inflated 3DGS for initial approach from far, (2) PGM-VS or original PVS for final precision.
+
+\subsection{Open Questions}
+
+\begin{enumerate}
+    \item \textbf{Automatic scale factor selection:} How to choose $\alpha$ from the 3DGS model properties?
+    \item \textbf{Coarse-to-fine with 3DGS:} Automatically decay $\alpha$ during servoing based on error.
+    \item \textbf{Real robot validation:} Virtual-to-real servoing experiments.
+    \item \textbf{Hybrid PGM + 3DGS:} Combine 2D and 3D smoothing for maximum convergence domain with fast convergence.
+\end{enumerate}
+
+
+%% ============================================================
+\begin{thebibliography}{9}
+
+\bibitem{crombez2019tro}
+N.~Crombez, E.~M.~Mouaddib, G.~Caron, and F.~Chaumette,
+``Visual servoing with photometric Gaussian mixtures as dense feature,''
+\emph{IEEE Trans. Robot.}, vol.~35, no.~1, pp.~49--63, 2019.
+
+\bibitem{caron2021ral}
+G.~Caron,
+``Defocus-based direct visual servoing,''
+\emph{IEEE Robot. Autom. Lett.}, vol.~6, no.~2, pp.~4057--4064, 2021.
+
+\bibitem{naamani2024iros}
+M.~B.~Naamani, G.~Caron, M.~Morisawa, and E.~M.~Mouaddib,
+``A mathematical characterization of the convergence domain for direct visual servoing,''
+in \emph{Proc. IEEE/RSJ IROS}, pp.~4846--4853, 2024.
+
+\bibitem{guerbas2021}
+S.~E.~Guerbas, N.~Crombez, G.~Caron, and E.~M.~Mouaddib,
+``Photometric Gaussian Mixtures for direct virtual visual servoing of omnidirectional camera,''
+in \emph{IEEE CVPR 2021 Workshop on 3D Vision and Robotics}, 2021.
+
+\bibitem{amneh2026icra}
+A.~TBD, G.~Caron, et al.,
+``Blur kernel from controlled degrees of freedom,''
+in \emph{Proc. IEEE ICRA}, 2026 (to appear).
+
+\end{thebibliography}
+
+\end{document}

@@ -125,7 +125,8 @@ def main(args):
     camtoworlds = torch.from_numpy(parser.camtoworlds).float().to(device)
     
     intrinsics_file = args.intrinsics_file
-
+    xi = None
+    
     if intrinsics_file is not None:
         print(f"[INFO] Loading intrinsics from file: {intrinsics_file}")
 
@@ -138,7 +139,9 @@ def main(args):
         fy = intr["fy"]
         cx = intr["cx"]
         cy = intr["cy"]
-
+        if args.feature_type in ["unified_ip", "unified_cs", "unified_ps"]:
+            xi = intr["xi"]
+        
     else:
     
         print("[INFO] Using intrinsics from COLMAP parser")
@@ -348,7 +351,7 @@ if __name__ == "__main__":
     
     # Camera model (gsplat terminology)
     parser.add_argument("--camera_model", default="pinhole", 
-                       choices=["pinhole", "fisheye", "spherical", "ortho"],
+                       choices=["pinhole", "fisheye"],
                        help="Camera model for rendering (gsplat terminology)")
                        
     parser.add_argument("--intrinsics_file", default=None)

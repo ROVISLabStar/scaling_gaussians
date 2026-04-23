@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scale-Adaptive PVS in 3D Gaussian Splatting</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; line-height: 1.6; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+        header { background: linear-gradient(135deg, #1a1a2e, #16213e); color: white; padding: 60px 0 40px; text-align: center; }
+        header h1 { font-size: 2.2em; margin-bottom: 10px; }
+        header p.subtitle { font-size: 1.1em; color: #adb5bd; margin-bottom: 20px; }
+        .authors { font-size: 1.0em; color: #dee2e6; }
+        .authors a { color: #74b9ff; text-decoration: none; }
+        .links { margin-top: 20px; }
+        .links a { display: inline-block; margin: 5px 10px; padding: 10px 24px; background: #0984e3; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; }
+        .links a:hover { background: #0773c5; }
+        section { padding: 40px 0; }
+        section:nth-child(even) { background: #f8f9fa; }
+        h2 { font-size: 1.6em; margin-bottom: 20px; color: #1a1a2e; border-bottom: 2px solid #0984e3; padding-bottom: 8px; }
+        h3 { font-size: 1.2em; margin: 20px 0 10px; color: #2d3436; }
+        p { margin-bottom: 15px; }
+        .figure { text-align: center; margin: 25px 0; }
+        .figure img { max-width: 100%; border: 1px solid #ddd; border-radius: 4px; }
+        .figure .caption { font-size: 0.9em; color: #636e72; margin-top: 8px; font-style: italic; }
+        .video-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
+        .video-card { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .video-card h4 { padding: 10px 15px; background: #2d3436; color: white; font-size: 0.95em; }
+        .video-card video { width: 100%; display: block; }
+        table { border-collapse: collapse; margin: 15px auto; }
+        table th, table td { padding: 8px 14px; border: 1px solid #ddd; text-align: center; }
+        table th { background: #1a1a2e; color: white; }
+        table tr:nth-child(even) { background: #f0f0f0; }
+        .highlight { background: #dff9fb; padding: 20px; border-left: 4px solid #0984e3; border-radius: 4px; margin: 20px 0; }
+        footer { background: #1a1a2e; color: #adb5bd; padding: 30px 0; text-align: center; font-size: 0.9em; }
+        @media (max-width: 768px) { .video-grid { grid-template-columns: 1fr; } header h1 { font-size: 1.6em; } }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="container">
+        <h1>Scale-Adaptive Photometric Visual Servoing<br>in 3D Gaussian Splatting</h1>
+        <p class="subtitle">Enlarging the convergence domain by inflating Gaussian scales in 3D</p>
+        <div class="authors">
+            <a href="#">Youssef Alj</a> (UM6P) &nbsp;&middot;&nbsp;
+            <a href="#">Guillaume Caron</a> (MIS, UPJV)
+        </div>
+        <div class="links">
+            <a href="https://github.com/ROVISLabStar/scaling_gaussians">Code</a>
+            <a href="#">Paper (coming soon)</a>
+        </div>
+    </div>
+</header>
+
+<!-- Abstract -->
+<section>
+    <div class="container">
+        <h2>Overview</h2>
+        <div class="highlight">
+            <p><strong>Key idea:</strong> Inflating the scales of 3D Gaussians in a Gaussian Splatting scene model smooths the rendered images, widening the convergence basin of photometric visual servoing (PVS). This enables convergence from initial poses where standard PVS fails, while maintaining sub-centimeter positioning accuracy.</p>
+        </div>
+        <div class="figure">
+            <img src="assets/alpha_illustration.png" alt="Alpha illustration">
+            <div class="caption">Effect of scale factor &alpha; on 3D Gaussian primitives and their splatted rendering. Increasing &alpha; inflates the ellipsoids, producing smoother images with wider "power of attraction."</div>
+        </div>
+    </div>
+</section>
+
+<!-- Smoothing paradigms -->
+<section>
+    <div class="container">
+        <h2>Smoothing Paradigms Comparison</h2>
+        <p>Our approach operates in 3D scene space, unlike prior methods that smooth in 2D image space (PGM-VS) or via optical models (DDVS). This produces depth-dependent, anisotropic, and occlusion-aware smoothing.</p>
+        <div class="figure">
+            <img src="assets/blurring_paradigms.png" alt="Blurring paradigms">
+            <div class="caption">Comparison of smoothing approaches. (a) Original PVS. (b) PGM-VS: uniform 2D Gaussian convolution. (c) DDVS: depth-dependent optical defocus. (d) Ours: 3D scale inflation &mdash; geometry-aware and anisotropic.</div>
+        </div>
+    </div>
+</section>
+
+<!-- Scale effect -->
+<section>
+    <div class="container">
+        <h2>Effect of Scale Factor &alpha;</h2>
+        <div class="figure">
+            <img src="assets/scale_effect_multi_scene.png" alt="Scale effect on multiple scenes">
+            <div class="caption">Rendered images for different &alpha; values on two scenes: room (indoor) and garden (outdoor). The outdoor scene preserves structure at higher &alpha; due to larger depth range.</div>
+        </div>
+    </div>
+</section>
+
+<!-- Cost landscape -->
+<section>
+    <div class="container">
+        <h2>Cost Function Landscape</h2>
+        <p>Inflating Gaussian scales smooths the photometric cost function, suppressing local minima and creating a convex basin around the desired pose.</p>
+        <div class="figure">
+            <img src="assets/cost_landscape_2d.png" alt="Cost landscape">
+            <div class="caption">2D cost function landscape swept along two translation axes for different &alpha; values. The original (&alpha;=1.0) has a narrow valley with local minima. At &alpha;=2.0, the landscape becomes a smooth convex bowl.</div>
+        </div>
+    </div>
+</section>
+
+<!-- Convergence experiment -->
+<section>
+    <div class="container">
+        <h2>Convergence Experiments</h2>
+        <div class="figure">
+            <img src="assets/experiment_panel_14_10.png" alt="Experiment panel">
+            <div class="caption">Convergence experiment (pair 14&rarr;10, 0.24m, 11.6&deg;). Inflated scales converge ~2&times; faster than original PVS.</div>
+        </div>
+
+        <h3>Multi-Pose Convergence Rate</h3>
+        <div class="figure">
+            <img src="assets/convergence_bar.png" alt="Convergence bar chart" style="max-width: 600px;">
+            <div class="caption">Success rate vs. &alpha; for 20 random initial poses. The optimal range is &alpha; &isin; [1.8, 2.2], doubling the convergence rate compared to original PVS.</div>
+        </div>
+
+        <h3>Multi-Scene Results</h3>
+        <table>
+            <tr><th>Scene</th><th>Original</th><th>&alpha;=1.6</th><th>&alpha;=1.8</th><th>&alpha;=2.0</th><th>&alpha;=2.2</th><th>&alpha;=2.4</th></tr>
+            <tr><td>Room (goal 10)</td><td>5/20</td><td>7/20</td><td>9/20</td><td>10/20</td><td><strong>11/20</strong></td><td>8/20</td></tr>
+            <tr><td>Room (goal 40)</td><td>5/20</td><td>6/20</td><td>6/20</td><td>6/20</td><td><strong>7/20</strong></td><td>4/20</td></tr>
+            <tr><td>Garden</td><td>0/20</td><td>0/20</td><td>4/20</td><td>8/20</td><td>15/20</td><td><strong>17/20</strong></td></tr>
+        </table>
+    </div>
+</section>
+
+<!-- Challenging cases -->
+<section>
+    <div class="container">
+        <h2>Challenging Configurations</h2>
+        <p>Cases where original PVS fails but scale-adaptive PVS (&alpha;=2.0) converges.</p>
+        <div class="figure">
+            <img src="assets/challenging_cases.png" alt="Challenging cases">
+            <div class="caption">Three challenging pairs. Left to right: desired image, initial image, difference (jet colormap), 3D trajectories (red=original fails, blue=inflated converges).</div>
+        </div>
+    </div>
+</section>
+
+<!-- Videos -->
+<section>
+    <div class="container">
+        <h2>Convergence Videos</h2>
+        <p>Side-by-side comparison of visual servoing convergence: desired | current | difference images.</p>
+
+        <h3>Pair 10 &rarr; 14</h3>
+        <div class="video-grid">
+            <div class="video-card">
+                <h4>Original (&alpha; = 1.0)</h4>
+                <video controls loop muted>
+                    <source src="assets/render_comparison_10_14_original.mp4" type="video/mp4">
+                </video>
+            </div>
+            <div class="video-card">
+                <h4>Inflated (&alpha; = 1.8)</h4>
+                <video controls loop muted>
+                    <source src="assets/render_comparison_10_14_inflated.mp4" type="video/mp4">
+                </video>
+            </div>
+        </div>
+
+        <h3>Pair 0 &rarr; 4</h3>
+        <div class="video-grid">
+            <div class="video-card">
+                <h4>Original (&alpha; = 1.0)</h4>
+                <video controls loop muted>
+                    <source src="assets/render_comparison_0_4_original.mp4" type="video/mp4">
+                </video>
+            </div>
+            <div class="video-card">
+                <h4>Inflated (&alpha; = 1.8)</h4>
+                <video controls loop muted>
+                    <source src="assets/render_comparison_0_4_inflated.mp4" type="video/mp4">
+                </video>
+            </div>
+        </div>
+
+        <h3>Pair 40 &rarr; 44</h3>
+        <div class="video-grid">
+            <div class="video-card">
+                <h4>Original (&alpha; = 1.0)</h4>
+                <video controls loop muted>
+                    <source src="assets/render_comparison_40_44_original.mp4" type="video/mp4">
+                </video>
+            </div>
+            <div class="video-card">
+                <h4>Inflated (&alpha; = 1.8)</h4>
+                <video controls loop muted>
+                    <source src="assets/render_comparison_40_44_inflated.mp4" type="video/mp4">
+                </video>
+            </div>
+        </div>
+
+        <h3>Pair 150 &rarr; 153 (Challenging)</h3>
+        <div class="video-grid">
+            <div class="video-card">
+                <h4>Original (&alpha; = 1.0) &mdash; FAILS</h4>
+                <video controls loop muted>
+                    <source src="assets/render_comparison_150_153_original.mp4" type="video/mp4">
+                </video>
+            </div>
+            <div class="video-card">
+                <h4>Inflated (&alpha; = 1.8) &mdash; CONVERGES</h4>
+                <video controls loop muted>
+                    <source src="assets/render_comparison_150_153_inflated.mp4" type="video/mp4">
+                </video>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- BibTeX -->
+<section>
+    <div class="container">
+        <h2>Citation</h2>
+        <pre style="background: #2d3436; color: #dfe6e9; padding: 20px; border-radius: 8px; overflow-x: auto; font-size: 0.85em;">
+@article{alj2026scaling,
+  title={Scale-Adaptive Photometric Visual Servoing in 3D Gaussian Splatting},
+  author={Alj, Youssef and Caron, Guillaume},
+  journal={IEEE Transactions on Robotics (submitted)},
+  year={2026}
+}</pre>
+    </div>
+</section>
+
+<footer>
+    <div class="container">
+        <p>&copy; 2026 Youssef Alj (UM6P) &amp; Guillaume Caron (MIS, UPJV). Built with GitHub Pages.</p>
+    </div>
+</footer>
+
+</body>
+</html>
